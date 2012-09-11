@@ -1,4 +1,5 @@
 -R theories Typex
-COQFLAGS = "-init-file ~/.coqrc $(COQLIBS) $(OTHERFLAGS) $(COQ_XML)"
+COQFLAGS = "-init-file ~/.coqrc-8.4 $(COQLIBS) $(OTHERFLAGS) $(COQ_XML)"
+theories/Init.v
 theories/ASTA.v
 theories/Typex.v

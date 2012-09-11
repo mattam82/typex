@@ -1,37 +1,12 @@
-Require Import Program Setoid.
-Require Import Containers.Sets.
+Require Import Program Setoid Bool.
+Require Import Containers.Sets Containers.SetConstructs SetDecide.
 Require SetAVLInstance.
+Require Import SetoidList Equality.
+Require Import Typex.Init.
+
 Generalizable Variables A Σ Q.
 
-(** Fix the easy tactic to include auto and order *)
-
-Ltac easy_base :=
-  let rec use_hyp H :=
-      (match type of H with
-         | _ /\ _ => exact H || destruct_hyp H
-         | _ => try (solve [ inversion H ])
-       end)
-  with do_intro := (let H := fresh in
-                    intro H; use_hyp H)
-  with destruct_hyp H := (case H; clear H; do_intro; do_intro) in
-  let rec use_hyps :=
-   (match goal with
-    | H:_ /\ _ |- _ => exact H || (destruct_hyp H; use_hyps)
-    | H:_ |- _ => solve [ inversion H ]
-    | _ => idtac
-    end) in
-  let rec do_atom :=
-   ((solve [ reflexivity | symmetry ; trivial ]) ||
-      contradiction  || (split; do_atom))
-  with do_ccl := (trivial with eq_true; repeat do_intro; do_atom) in
-  (use_hyps; do_ccl) || fail "Cannot solve this goal".
-
-Ltac easy ::= solve [ auto || order || easy_base ] || fail "Cannot solve this goal".
-
-(* (** Overloaded equivalence operator using definitional type classes. *) *)
-(* Class Equiv (A : Type) := equiv : relation A. *)
-(* Infix "==" := equiv. *)
-(* Notation "(==)" := equiv. *)
+Notation "(===)" := equiv (only parsing).
 
 (** An alphabet is a finite set with a decidable equivalence relation. *)
 
@@ -65,8 +40,10 @@ Section Formulas.
   | Right (f : formula) (q : Q) (H : q \In states_set).
 
 End Formulas.
-(** Transitions *)
 
+Coercion Is_true : bool >-> Sortclass.
+
+(** Transitions *)
 Section Transitions.
   Context `{A:Alphabet Σ, S:States Q}.
 
@@ -78,6 +55,7 @@ Section Transitions.
     { trans_q : Q;
       trans_L : set Σ;
       trans_L_incl : trans_L [<=] alpha_set;
+      trans_L_inh : not (is_empty trans_L);
       trans_select : selecting;
       trans_Φ : formula }. 
 
@@ -108,7 +86,6 @@ Section Transitions.
     intuition symmetry; auto.
     intuition (etransitivity; eauto).
   Qed.
-  
 
   Instance trans_ord : OrderedType Transition := 
     { _eq := eq_transition; _lt := lt_transition;
@@ -124,7 +101,7 @@ Section Transitions.
     - intros; red; intros.
       destruct H0.
       destruct H.
-      * now rewrite H0 in H.
+      * order.
       * now (rewrite H1 in H; destruct H; order).
 
     - intros. unfold cmp_transition; simpl.
@@ -158,80 +135,8 @@ Section Automaton.
       auto_transitions : Transitions }.
 End Automaton.
 
-Require Import Wellfounded Wf_nat.
-
-Lemma list_length_ind {A} {P : list A -> Prop}
-      (Psucc : forall l, (forall l', length l' < length l -> P l') -> P l) : forall l, P l.
-Proof.
-  apply induction_ltof1 with (f := @length A).
-  apply Psucc.
-Qed.
-
-Section ListLastInd.
-  Context {A : Type}.
-  Context (P : list A -> Prop)
-          (Pnil : P [])
-          (Papp_end : forall l x, P l -> P (l ++ [x])%list).
-  Require Import Arith.
-      
-  Fixpoint list_split_last (l : list A) (opt : A) : list A * A :=
-    match l with
-      | [] => ([], opt)
-      | a :: [] => ([opt], a)
-      | a :: b :: l => 
-          let (r, x) := list_split_last l b in
-            (opt :: a :: r, x)
-    end.
-
-  Lemma list_split_last_spec l :
-    forall opt l' a', list_split_last l opt = (l', a') -> opt :: l = (l' ++ [a'])%list.
-  Proof. revert l.
-    refine (list_length_ind _). intros.
-    destruct l; depelim H0.
-    reflexivity.
-
-    simpl in x.
-    destruct l. depelim x.
-    reflexivity.
-
-    case_eq (list_split_last l a0); intros l'' a'' Heq.
-    rewrite Heq in x.
-    depelim x.
-    simpl. repeat f_equal.
-    apply (H l). simpl. auto.
-    auto.
-  Qed.    
-  
-  Program 
-  Fixpoint list_elim_last (l : list A) {measure (length l)} : P l :=
-    match l with
-      | [] => Pnil
-      | a :: [] => Papp_end [] a Pnil
-      | a :: l => 
-          let '(l', b) := list_split_last l a in
-            Papp_end l' b (list_elim_last l')
-    end.
-  
-  Next Obligation.
-  Proof.
-    symmetry in Heq_anonymous. apply list_split_last_spec in Heq_anonymous.
-    destruct l'; simpl; auto. auto with arith.
-    simpl in Heq_anonymous. inversion Heq_anonymous; subst.
-    rewrite app_length. simpl; rewrite NPeano.Nat.add_1_r. auto with datatypes arith.
-  Qed.
-
-  Next Obligation.
-  Proof.
-    symmetry in Heq_anonymous. apply list_split_last_spec in Heq_anonymous. auto.
-  Qed.
-
-End ListLastInd.
-
 Section Tree.
   Context `{A:Alphabet Σ}.
-
-  Inductive binary_tree :=
-  | tree_leaf | tree_node (l : Σ) (t1 t2 : binary_tree).
   
   (** Direction *)
   Definition direction := bool (* = 1 or 2 *).
@@ -274,143 +179,6 @@ Section Tree.
   Proof. autounfold with asta; now rewrite app_assoc. Qed.
   Hint Rewrite app_node_assoc : asta.
 
-  (** Computing the domain of a tree. *)
-  Fixpoint dom_aux (t : binary_tree) cur : node_set :=
-    match t with
-      | tree_leaf => {cur}
-      | tree_node l t1 t2 => {cur; dom_aux t1 (cur • 1)} ++
-                                 dom_aux t2 (cur • 2)
-    end.
-
-  Definition domain t := dom_aux t ε.
-
-  Lemma domain_leaf : domain tree_leaf = {ε}%set.
-  Proof. reflexivity. Qed.
-  Require Import Containers.SetConstructs.
-  Lemma dom_aux_node l t1 t2 π :
-    dom_aux (tree_node l t1 t2) π = {π; dom_aux t1 (π • 1)} ++ dom_aux t2 (π • 2)%set.
-  Proof. reflexivity. Qed.
-  
-  Hint Rewrite domain_leaf dom_aux_node : asta.
-
-  Definition dir_to_node (d : direction) : node := [d].
-  Coercion dir_to_node : direction >-> node.
-  
-  (** Characterisation as an inductive relation. *)
-  Inductive Dom : binary_tree -> node -> Prop:= 
-  | dom_leaf t : Dom t ε
-  | dom_node_1 {l t1 t2 π} : Dom t1 π -> Dom (tree_node l t1 t2) (1 @ π)
-  | dom_node_2 {l t1 t2 π} : Dom t2 π -> Dom (tree_node l t1 t2) (2 @ π).
-  Hint Constructors Dom : asta.
-
-  Ltac easy ::= auto with asta || order || easy_base.
-
-  Notation "(===)" := equiv (only parsing).
-
-  Require Import SetoidList.
-
-  Instance snoc_Proper : Proper ((===) ==> (===) ==> (===)) snoc_node.
-  Proof. reduce.
-    repeat reduce in H.
-    repeat reduce in H0. subst. reflexivity.
-  Qed.
-
-  Instance app_Proper : Proper ((===) ==> (===) ==> (===)) app_node.
-  Proof. reduce.
-    repeat reduce in H; repeat reduce in H0. subst; auto.
-  Qed.
-    
-  Instance Dom_proper : Proper ((===) ==> (===) ==> iff) Dom. 
-  Proof with easy.
-    assert (Proper (equiv ==> equiv ==> impl) Dom).
-    reduce. 
-    reduce in H. subst y. 
-    reduce in H0. subst x0; auto.
-
-    reduce.
-    split. 
-    apply H; auto.
-    symmetry in H0, H1.
-    apply H; auto.
-  Qed.
-
-  (* BUG with autorewrite and typeclasses! Damnit *)
-  Hint Rewrite @singleton_iff using typeclasses eauto : myset.
-  Require Import SetDecide.
-
-  Lemma dom_aux_cur : forall t π, π \In dom_aux t π.
-  Proof. destruct t; unfold dom_aux; fsetdec. Qed.  
-
-  Lemma domain_ε t : ε \In domain t.
-  Proof. unfold domain. apply dom_aux_cur. Qed.
-  Hint Resolve dom_aux_cur domain_leaf domain_ε : asta.
-
-  Require Import Equality.
-
-  Lemma list_app_nil (l l' : node) : (l @ l' = [] -> l = [] /\ l' = [])%list. 
-  Proof. induction l'; intros; simpl; auto.
-    discriminate H. 
-  Qed.
-
-  Lemma app_inv_head: forall l l1 l2 : node, l1 @ l === l2 @ l -> l1 === l2.
-  Proof.
-    induction l; simpl; auto. intros. red in H; depelim H; auto.
-  Qed.
-
-  Instance: Proper ((===) ==> eq) (@length direction).
-  Proof. reduce.
-    induction H; auto.
-  Qed.    
-
-  Ltac simp := autorewrite with set_simpl in *.
- 
-  Lemma Dom_dom_aux t : forall n, Dom t n -> forall π, (π @ n) \In dom_aux t π.
-  Proof with try easy. intros. revert π. induction H; intros.
-    now simpl. 
-    
-    simpl.
-    autorewrite with set_simpl. left; right.
-    unfold app_node. rewrite app_assoc_reverse.
-    apply IHDom.
-
-    simpl.
-    autorewrite with set_simpl. right.
-    unfold app_node. rewrite app_assoc_reverse.
-    apply IHDom.
-  Qed.
-
-  Lemma Dom_domain t : forall n, Dom t n -> n \In domain t.
-  Proof.
-    intros.
-    generalize (Dom_dom_aux t n H ε).
-    now autorewrite with asta.
-  Qed.
-    
-  (* Lemma dom_aux_extend π n t : π @ n \In dom_aux t π -> forall d, (π • d) @ n \In dom_aux t (π • d). *)
-  (* Proof with easy. *)
-  (*     revert π n; induction t; simpl; intros. *)
-  (*     autorewrite with set_simpl in H. *)
-  (*     apply list_app_eq in H. now rewrite H; fsetdec. *)
-
-  (*     autorewrite with set_simpl in H. *)
-  (*     destruct H. destruct H. *)
-  (*     apply list_app_eq in H. now rewrite H; fsetdec. *)
-  (*     autorewrite with set_simpl. *)
-  (*     left. right. *)
-      
-      
-
-  (*   symmetry in x; apply list_app_nil in x. destruct x as [-> ->]. apply domain_ε. *)
-    
-  (*   simpl.  *)
-  (*   specialize (IHDom1 (π • 1) n eq_refl). *)
-  (*   specialize (IHDom2 (π • 2) n eq_refl). *)
-  (*   fsetdec. *)
-  (* Qed. *)
-
-  (* Lemma Dom_domain t : forall n, Dom t n -> n \In domain t. *)
-  (* Proof with try easy. intros; now apply Dom_dom_aux. Qed. *)
-
   Lemma node_app_eq_l (l l' l'' : node) : (l @ l' === l @ l'' -> l' === l'').
   Proof. intros H. unfold app_node, empty_node in H. reduce in H. 
      now apply app_inv_tail in H. 
@@ -430,15 +198,12 @@ Section Tree.
   Lemma snoc_app_node π d : π • d === π @ [d].
   Proof. reflexivity. Qed.
 
-  Ltac depelim id ::= 
-       do_depelim ltac:(fun hyp => do_case hyp) id 
-    || (reduce in id; do_depelim ltac:(fun hyp => do_case hyp) id).
-
   Lemma empty_snoc_app π d n : ~ ε === (π • d) @ n.
   Proof. destruct n; intro; discriminate. Qed.
 
   Lemma app_snoc n d π : (π • d) @ n === π @ [d] @ n.
   Proof. rewrite <- app_node_assoc. reflexivity. Qed.
+  Hint Rewrite app_snoc : asta.
 
   Lemma node_app_eq_l_length (l0 l1 l2 l3 : node) : 
     l0 @ l1 === l2 @ l3 -> length l0 = length l2 -> l0 === l2 /\ l1 === l3.
@@ -460,92 +225,226 @@ Section Tree.
 
   Lemma snoc_length π d : length (π • d) = length π + 1.
   Proof. unfold snoc_node; simpl; autorewrite with list; omega. Qed.
+
   Hint Rewrite node_app_length snoc_length : asta.
 
-  Ltac forward H := 
-    match type of H with
-      | ?X -> _ => cut X; [let H' := fresh in intro H'; specialize (H H'); clear H'|]
-    end.
+  Lemma node_app_nil (l l' : node) : (l @ l' === [] -> l === [] /\ l' === [])%list. 
+  Proof. induction l'; intros; simpl; auto. discriminate H. Qed.
 
-  Lemma dom_aux_length t : forall π n, π \In dom_aux t n -> length n <= length π.
-  Proof.
-    induction t; simpl; intros; auto with arith; autorewrite with asta set_simpl in H.
-    now rewrite H. 
+  (** The trees we consider here *)
+  Inductive binary_tree :=
+  | tree_leaf | tree_node (l : Σ) (t1 t2 : binary_tree).
 
-    destruct H as [[H|H]|H].
-    now rewrite H.
-    specialize (IHt1 _ _ H); autorewrite with asta in IHt1. omega.
-    specialize (IHt2 _ _ H); autorewrite with asta in IHt2. omega.
-  Qed.
+  
+  Section Domain.
+  
+    (** Computing the domain of a tree. *)
+    Fixpoint dom_aux (t : binary_tree) cur : node_set :=
+      match t with
+        | tree_leaf => {cur}
+        | tree_node l t1 t2 => {cur; dom_aux t1 (cur • 1)} ++
+                                                           dom_aux t2 (cur • 2)
+      end.
 
-  Lemma dom_aux_inv t : forall π π' n, π @ n \In dom_aux t π' -> 
-                                       length π = length π' -> π = π'.
-  Proof.
-    induction t; simpl; intros; autorewrite with asta set_simpl in H; simpl; auto; intros.
-    rewrite <- app_node_eps_r in H. apply node_app_eq_l_length in H; intuition eauto.
+    Definition domain t := dom_aux t ε.
+
+    Lemma domain_leaf : domain tree_leaf = {ε}%set.
+    Proof. reflexivity. Qed.
+
+    Lemma dom_aux_node l t1 t2 π :
+      dom_aux (tree_node l t1 t2) π = {π; dom_aux t1 (π • 1)} ++ dom_aux t2 (π • 2)%set.
+    Proof. reflexivity. Qed.
     
-    destruct H as [[H|H]|H].
-    rewrite <- app_node_eps_r in H. now (apply node_app_eq_l_length in H; intuition).
+    Hint Rewrite domain_leaf dom_aux_node : asta.
+
+    Definition dir_to_node (d : direction) : node := [d].
+    Coercion dir_to_node : direction >-> node.
     
-    destruct n using list_elim_last. apply dom_aux_length in H. 
-    autorewrite with asta in H. simpl in H. assert False; omega.
-    fold ([x] @ l0) in *. rewrite <- app_node_assoc in H.
-    specialize (IHt1 _ _ _ H). autorewrite with asta in IHt1. simpl in IHt1.
-    forward IHt1. now depelim IHt1. auto with arith.
+    (** Characterisation as an inductive relation. *)
+    Inductive Dom : binary_tree -> node -> Prop:= 
+    | dom_leaf t : Dom t ε
+    | dom_node_1 {l t1 t2 π} : Dom t1 π -> Dom (tree_node l t1 t2) (1 @ π)
+    | dom_node_2 {l t1 t2 π} : Dom t2 π -> Dom (tree_node l t1 t2) (2 @ π).
+    Hint Constructors Dom : asta.
+
+    Ltac easy ::= auto with asta || order || easy_base.
+
+    Instance snoc_Proper : Proper ((===) ==> (===) ==> (===)) snoc_node.
+    Proof. reduce.
+           repeat reduce in H.
+           repeat reduce in H0. subst. reflexivity.
+    Qed.
+
+    Instance app_Proper : Proper ((===) ==> (===) ==> (===)) app_node.
+    Proof. reduce.
+           repeat reduce in H; repeat reduce in H0. subst; auto.
+    Qed.
     
-    destruct n using list_elim_last. apply dom_aux_length in H.
-    autorewrite with asta in H. simpl in H. assert False; omega.
-    fold ([x] @ l0) in *. rewrite <- app_node_assoc in H.
-    specialize (IHt2 _ _ _ H). autorewrite with asta in IHt2. simpl in IHt2.
-    forward IHt2. now depelim IHt2. auto with arith.
-  Qed.
+    Instance Dom_proper : Proper ((===) ==> (===) ==> iff) Dom. 
+    Proof with easy.
+      assert (Proper (equiv ==> equiv ==> impl) Dom).
+      reduce. 
+      reduce in H. subst y. 
+      reduce in H0. subst x0; auto.
 
-  Lemma dom_aux_Dom : forall n π t, (π @ n) \In dom_aux t π -> Dom t n.
-  Proof with try easy. 
-    refine (list_elim_last _ _ _); intros.
-    constructor. 
+      reduce.
+      split. 
+      apply H; auto.
+      symmetry in H0, H1.
+      apply H; auto.
+    Qed.
 
-    destruct t.
-    simpl in H0.
-    autorewrite with asta set_simpl in H0.
-    apply node_app_eq_tail in H0.
-    destruct l; simpl in H0; discriminate.
+    Lemma dom_aux_cur : forall t π, π \In dom_aux t π.
+    Proof. destruct t; unfold dom_aux; fsetdec. Qed.  
 
-    unfold app_node, snoc_node in *. 
-    simpl in H0.
-    autorewrite with asta set_simpl in H0.
-    destruct H0 as [[He|Ht]|Hf].
-    apply node_app_eq_tail in He.
-    elimtype False. destruct l; simpl in *; discriminate.
+    Lemma domain_ε t : ε \In domain t.
+    Proof. unfold domain. apply dom_aux_cur. Qed.
+    Hint Resolve dom_aux_cur domain_leaf domain_ε : asta.
+
+    Instance: Proper ((===) ==> eq) (@length direction).
+    Proof. reduce.
+           induction H; auto.
+    Qed.    
+
+    Ltac simp := simpl in *; autorewrite with asta set_simpl in *.
     
-    rewrite <- app_assoc in Ht.
-    destruct x. simpl in Ht.
+    Lemma Dom_dom_aux t : forall n, Dom t n -> forall π, (π @ n) \In dom_aux t π.
+    Proof with try easy. intros. revert π. induction H; intros.
+                         now simpl. 
+                         
+                         simp. left; right. rewrite <- app_node_assoc.
+                         apply IHDom.
 
-    apply dom_aux_inv in Ht. discriminate.
-    reflexivity.
-    constructor; eapply H. apply Ht.
+                         simp; 
+                           autorewrite with set_simpl. right.
+                         unfold app_node. rewrite app_assoc_reverse.
+                         apply IHDom.
+    Qed.
 
-    destruct x; simpl in Hf. 
-    rewrite <- app_assoc in Hf.
-    constructor; eapply H. apply Hf.
+    Lemma Dom_domain t : forall n, Dom t n -> n \In domain t.
+    Proof.
+      intros.
+      generalize (Dom_dom_aux t n H ε).
+      now autorewrite with asta.
+    Qed.
 
-    rewrite <- app_assoc in Hf.
-    apply dom_aux_inv in Hf. discriminate.
-    reflexivity.
-  Qed.
+    Lemma dom_aux_length t : forall π n, π \In dom_aux t n -> length n <= length π.
+    Proof.
+      induction t; simpl; intros; auto with arith; autorewrite with asta set_simpl in H.
+      now rewrite H. 
 
-  Lemma domain_Dom t : forall π, π \In domain t -> Dom t π.
-  Proof with try easy.
-    intros. apply dom_aux_Dom with ε. fold (domain t). rewrite app_node_eps_l. apply H.
-  Qed.
+      destruct H as [[H|H]|H].
+      now rewrite H.
+      specialize (IHt1 _ _ H); autorewrite with asta in IHt1. omega.
+      specialize (IHt2 _ _ H); autorewrite with asta in IHt2. omega.
+    Qed.
 
-  Lemma domain_Dom_iff t : forall n, Dom t n <-> n \In domain t.
-  Proof. split; auto using domain_Dom, Dom_domain. Qed.
+    Lemma dom_aux_inv t : forall π π' n, π @ n \In dom_aux t π' -> 
+                                         length π = length π' -> π = π'.
+    Proof.
+      induction t; simpl; intros; autorewrite with asta set_simpl in H; simpl; auto; intros.
+      rewrite <- app_node_eps_r in H. apply node_app_eq_l_length in H; intuition eauto.
+      
+      destruct H as [[H|H]|H].
+      rewrite <- app_node_eps_r in H. now (apply node_app_eq_l_length in H; intuition).
+      
+      destruct n using list_elim_last. apply dom_aux_length in H. 
+      autorewrite with asta in H. simpl in H. assert False; omega.
+      fold ([x] @ l0) in *. rewrite <- app_node_assoc in H.
+      specialize (IHt1 _ _ _ H). autorewrite with asta in IHt1. simpl in IHt1.
+      forward IHt1. now depelim IHt1. auto with arith.
+      
+      destruct n using list_elim_last. apply dom_aux_length in H.
+      autorewrite with asta in H. simpl in H. assert False; omega.
+      fold ([x] @ l0) in *. rewrite <- app_node_assoc in H.
+      specialize (IHt2 _ _ _ H). autorewrite with asta in IHt2. simpl in IHt2.
+      forward IHt2. now depelim IHt2. auto with arith.
+    Qed.
+
+    Lemma dom_aux_Dom : forall n π t, (π @ n) \In dom_aux t π -> Dom t n.
+    Proof with try easy. 
+      refine (list_elim_last _ _ _); intros.
+      constructor. 
+
+      destruct t.
+      simpl in H0.
+      autorewrite with asta set_simpl in H0.
+      apply node_app_eq_tail in H0.
+      destruct l; simpl in H0; discriminate.
+
+      unfold app_node, snoc_node in *. 
+      simpl in H0.
+      autorewrite with asta set_simpl in H0.
+      destruct H0 as [[He|Ht]|Hf].
+      apply node_app_eq_tail in He.
+      elimtype False. destruct l; simpl in *; discriminate.
+      
+      rewrite <- app_assoc in Ht.
+      destruct x. simpl in Ht.
+
+      apply dom_aux_inv in Ht. discriminate.
+      reflexivity.
+      constructor; eapply H. apply Ht.
+
+      destruct x; simpl in Hf. 
+      rewrite <- app_assoc in Hf.
+      constructor; eapply H. apply Hf.
+      rewrite <- app_assoc in Hf.
+      apply dom_aux_inv in Hf. discriminate.
+      reflexivity.
+    Qed.
+
+    Lemma domain_Dom t : forall π, π \In domain t -> Dom t π.
+    Proof with try easy.
+      intros. apply dom_aux_Dom with ε. fold (domain t). rewrite app_node_eps_l. apply H.
+    Qed.
+
+    Lemma domain_Dom_iff t : forall n, Dom t n <-> n \In domain t.
+    Proof. split; auto using domain_Dom, Dom_domain. Qed.
+  End Domain.
+  
+  Section Label.
+
+    Inductive Label := 
+    | hash | label (l : Σ).
+
+    Notation "#" := hash.
+    Coercion label : Σ >-> Label.
+
+    Program
+    Fixpoint label_of (t : binary_tree) (π : node | Dom t π) : Label :=
+      match t with
+        | tree_leaf => hash
+        | tree_node λ l r => 
+          match π with
+            | [] => label λ
+            | false :: π' => label_of l π'
+            | true :: π' => label_of r π'
+          end
+      end.
+
+    Next Obligation. 
+      fold (snoc_node π' false) in H.
+    (* Fixpoint label_of (t : binary_tree) (π : node) : Label := *)
+    (*   match t with *)
+    (*     | tree_leaf => hash *)
+    (*     | tree_node λ l r =>  *)
+    (*       match π with *)
+    (*         | [] => label λ *)
+    (*         | false :: π' => label_of l π' *)
+    (*         | true :: π' => label_of r π' *)
+    (*       end *)
+    (*   end. *)
+
+    Lemma label_dom t n : Dom t n -> label_of t n 
+    
 
 End Tree.
 Section Evaluation.
   Context `{A: ASTA Σ Q}.
-  
-  
 
-  
+  Fixpoint eval (t : binary_tree) (π : node) (r : set Q) : set Q :=
+    match t with
+      | tree_leaf => {}
+      | tree_node λ l r => 
+ 
