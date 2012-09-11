@@ -1,4 +1,4 @@
--R theories Typex
+-R theories Typex -R /Users/mat/research/coq/contribs-v8.4/Orsay/Containers/theories Containers
 COQFLAGS = "-init-file ~/.coqrc-8.4 $(COQLIBS) $(OTHERFLAGS) $(COQ_XML)"
 theories/Init.v
 theories/ASTA.v

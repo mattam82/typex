@@ -102,3 +102,7 @@ Section ListLastInd.
   Qed.
 
 End ListLastInd.
+
+Lemma app_comm_cons' : forall A (x y:list A) (a:A), x ++ a :: y = (x ++ [a]) ++ y.
+Proof. induction x; simpl; intros; auto. now rewrite IHx. Qed.
+       
