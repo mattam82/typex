@@ -36,8 +36,52 @@ Section Formulas.
   | Disj (f g : formula)
   | Conj (f g : formula)
   | Neg (f : formula)
-  | Left (f : formula) (q : Q) (H : q \In states_set) 
-  | Right (f : formula) (q : Q) (H : q \In states_set).
+  | Left (q : Q) (H : q \In states_set) 
+  | Right (q : Q) (H : q \In states_set).
+
+  Fixpoint left_states (θ : formula) : set Q :=
+    match θ with
+      | Disj f g | Conj f g => union (left_states f) (left_states g)
+      | Neg f => left_states f
+      | Left q _ => {q}
+      | _ => {}
+    end.
+
+  Fixpoint right_states (θ : formula) : set Q :=
+    match θ with
+      | Disj f g | Conj f g => union (left_states f) (left_states g)
+      | Neg f => left_states f
+      | Right q _ => {q}
+      | _ => {}
+    end.
+
+  Fixpoint states_of (θ : formula) : set Q * set Q :=
+    match θ with
+      | Disj f g 
+      | Conj f g => 
+        let (leftf, rightf) := states_of f in
+        let (leftg, rightg) := states_of g in
+          (union leftf leftg, union rightf rightg)
+      | Neg f => states_of f
+      | Left q _ => ({q}%set, {})
+      | Right q _ => ({}, {q})
+      | _ => ({}, {})
+    end.
+
+  Lemma states_of_spec θ : forall l r,
+                             states_of θ = (l, r) -> l [<=] states_set /\ r [<=] states_set.
+  Proof. 
+    induction θ; intros l r Heq; depelim Heq; try intuition fsetdec. 
+    
+    simpl in x. do 2 destruct states_of. specialize_eqs IHθ1. specialize_eqs IHθ2.
+    depelim x. intuition fsetdec.
+    
+    simpl in x. do 2 destruct states_of. specialize_eqs IHθ1. specialize_eqs IHθ2.
+    depelim x. intuition fsetdec.
+    
+    simpl in x. destruct states_of. specialize_eqs IHθ.
+    depelim x. intuition fsetdec.
+  Qed.
 
 End Formulas.
 
@@ -128,7 +172,7 @@ Section Transitions.
 End Transitions.
 
 Section Automaton.
-  Record ASTA Σ Q := 
+  Class ASTA Σ Q := 
     { auto_Σ :> Alphabet Σ;
       auto_Q :> States Q;
       auto_top_states : { s : set Q | s [<=] auto_Q } ;
@@ -141,10 +185,8 @@ Section Tree.
   (** Direction *)
   Definition direction := bool (* = 1 or 2 *).
   Delimit Scope direction_scope with dir.
-  Definition left : direction := false.
-  Definition right : direction := true.
-  Notation "1" := left : direction_scope.
-  Notation "2" := right : direction_scope.
+  Notation "1" := false : direction_scope.
+  Notation "2" := true : direction_scope.
   Open Scope direction_scope.
   Bind Scope direction_scope with direction.
 
@@ -397,11 +439,77 @@ Section Tree.
 
 End Tree.
 
+(* I hate this but... *)
+Delimit Scope node_scope with node.
+Bind Scope node_scope with node.
+Delimit Scope direction_scope with direction.
+Bind Scope direction_scope with direction.
+
+Notation "'ε'" := empty_node : node_scope.
+Notation "1" := (false : direction) : direction_scope.
+Notation "2" := (true : direction) : direction_scope.
+Infix "@" := (@app direction) (right associativity, at level 60) : node_scope.
+Notation " n • d " := (n @ dir_to_node d)%node (at level 60).
+Notation " (• d ) " := (fun n => n @ dir_to_node d)%node (at level 40).
+
+(* BUG *)
+Arguments binary_tree.
+Implicit Arguments binary_tree [].
+
+Require Import SetConstructs.
+
+Definition power_union {A} `{OrderedType A} (s : set (set A)) : set A :=
+  fold (fun a acc => union a acc) s {}.
+
+Section SetComprehensions.
+
+  Context `{OrderedType A} {B : Type} `{OrderedType B}.
+
+  Definition from_compr (a : set A) (P : A -> bool) (f : A -> B) : set B :=
+    map f (filter P a).
+
+  Definition split (s : set (set A * set B)) : set A * set B :=
+    (power_union (map fst s), power_union (map snd s)).
+
+  (* Variable s : set. *)
+  (* Check [ x \from s | true ]. *)
+  (* Check [ x \from s | x == x ]. *)
+End SetComprehensions.
+
+Notation "[ 'set' x 'in' s | p ] " := (filter (fun x => p) s) 
+                                          (at level 0, x at level 99).
+
+(* Notation "[ 'set' x 'from' s , q | p ] " := (from_compr s (fun x => p) (fun x => q)) (x ident, at level 0). *)
+
 Section Evaluation.
   Context `{A: ASTA Σ Q}.
+  
+  Variable eval_trans : forall (Γ1 Γ2 : set Q) (π : node) (trans : Transitions), set Q.
 
-  (* Fixpoint eval (t : binary_tree) (π : node) (r : set Q) : set Q := *)
-  (*   match t with *)
-  (*     | tree_leaf => {} *)
-  (*     | tree_node λ l r =>  *)
-End Evaluation. 
+  (*
+1 function eval asta (A, t, ⇡, r) =
+2 if t(⇡) = # then return ; else
+3 let trans ={(q,L,⌧τ,π) \in L | q \in r /\ t(π) \in L}in
+4 let ri = {q|#i q \in θ, ∀ θ \in trans} in
+5 let Γ1 = eval asta (A,t,⇡π · 1,r1)
+6 and Γ2 = eval asta (A,t,⇡π · 2,r2)
+7 in return eval trans(Γ1, Γ2, π⇡, trans)
+   *)
+
+  Open Scope node_scope. Open Scope direction_scope.
+
+  Program
+  Fixpoint eval (t : binary_tree Σ) (π : node) (r : set Q) : set Q :=
+    match label_of t π with
+      | hash => {}
+      | label l =>
+        let trans := 
+            [set t in auto_transitions | (t.(trans_q) \in r) && (l \in t.(trans_L))] 
+        in
+        let '(r1, r2) := split (map (states_of ∘ trans_Φ) trans) in
+        let Γ1 := eval t (π @ [1]) r1 in
+        let Γ2 := eval t (π @ [2]) r2 in
+          eval_trans Γ1 Γ2 π trans
+    end.
+
+End Evaluation.
