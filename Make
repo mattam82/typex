@@ -1,5 +1,31 @@
--R theories Typex -R /Users/mat/research/coq/contribs-v8.4/Orsay/Containers/theories Containers
+-R theories Typex
 COQFLAGS = "-init-file ~/.coqrc-8.4 $(COQLIBS) $(OTHERFLAGS) $(COQ_XML)"
-theories/Init.v
-theories/ASTA.v
+theories/XPath/Basics/nat_basics.v
+theories/XPath/DataStructures/Mapping.v
+theories/XPath/DataStructures/dgraph.v
+theories/XPath/DataStructures/genSets.v
+theories/XPath/DataStructures/genSetsInt.v
+theories/XPath/DataStructures/graphInt.v
+theories/XPath/DataStructures/graphProp.v
+theories/XPath/DataStructures/setOrder.v
+theories/XPath/DataStructures/zorder.v
+theories/XPath/SXPath/Containment/XPCAxioms.v
+theories/XPath/SXPath/Containment/XPCcomplete.v
+# theories/XPath/SXPath/Containment/XPCsound.v
+theories/XPath/SXPath/Containment/XPathBasicProp.v
+theories/XPath/SXPath/Containment/XPathContainment.v
+theories/XPath/SXPath/Containment/XPathInduction.v
+theories/XPath/SXPath/Containment/XPequiv.v
+theories/XPath/SXPath/Containment/Zoo.v
+# theories/XPath/SXPath/Containment/XPCdecide.v
+# theories/XPath/SXPath/Containment/demo.v
+# theories/XPath/SXPath/Interp/XPCDecidability.v
+theories/XPath/SXPath/Interp/XPathSemantics.v
+theories/XPath/SXPath/Interp/XPathSemanticsEquivalences.v
+theories/XPath/SXPath/Model/xmlTree.v
+theories/XPath/SXPath/Model/xnodes.v
+theories/XPath/SXPath/Model/XPath.v
+theories/XPath/SXPath/Model/XPathGrammar.v
+theories/Automata/Init.v
+theories/Automata/ASTA.v
 theories/Typex.v
