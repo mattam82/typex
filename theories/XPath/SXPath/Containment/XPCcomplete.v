@@ -38,7 +38,8 @@ Lemma sem_decidable:
      ( Ƥ [p](tree, x ↝  y)  \/  ~Ƥ [p](tree, x ↝  y) )
 .
 induction p.
-exists root;exists root;split;[apply root_in_tree | split;[apply root_in_tree | right;simpl;auto]].
+exists 0%Z;exists 0%Z;intuition.
+[apply root_in_tree | split;[apply root_in_tree | right;simpl;auto]].
 exists root;exists root;split;[apply root_in_tree | split;
 [apply root_in_tree | left;apply rootJoinable;apply root_in_tree]].
 

@@ -10,7 +10,7 @@ theories/XPath/DataStructures/graphProp.v
 theories/XPath/DataStructures/setOrder.v
 theories/XPath/DataStructures/zorder.v
 theories/XPath/SXPath/Containment/XPCAxioms.v
-theories/XPath/SXPath/Containment/XPCcomplete.v
+#theories/XPath/SXPath/Containment/XPCcomplete.v
 # theories/XPath/SXPath/Containment/XPCsound.v
 theories/XPath/SXPath/Containment/XPathBasicProp.v
 theories/XPath/SXPath/Containment/XPathContainment.v
