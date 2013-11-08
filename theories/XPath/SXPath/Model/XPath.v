@@ -32,8 +32,13 @@ Inductive Axis : Set :=
   | attribute : Axis
   | namespace : Axis
   | child : Axis
+  | following_sibling : Axis
   | descendant : Axis
-  | descendant_or_self : Axis.
+  | descendant_or_self : Axis
+  | parent : Axis
+  | preceding_sibling : Axis
+  | ancestor : Axis
+  | ancestor_or_self : Axis.
 
 (* ------------------------------------------------------- *)
 
