@@ -71,8 +71,8 @@ Section Formulas.
   Lemma states_of_spec θ : forall l r,
                              states_of θ = (l, r) -> l [<=] states_set /\ r [<=] states_set.
   Proof. 
-    induction θ; intros l r Heq; depelim Heq; try intuition fsetdec. 
-    
+    induction θ; intros l r Heq; depelim Heq; try intuition fsetdec.
+ 
     simpl in x. do 2 destruct states_of. specialize_eqs IHθ1. specialize_eqs IHθ2.
     depelim x. intuition fsetdec.
     
@@ -97,7 +97,7 @@ Section Transitions.
   (** One transition. *)
   Record Transition := 
     { trans_q : Q;
-      trans_L : set Σ;
+      trans_L : set Σ; (* Replace with decidable predicate fin/cofin *)
       trans_L_incl : trans_L [<=] alpha_set;
       trans_L_inh : not (is_empty trans_L);
       trans_select : selecting;
@@ -268,7 +268,7 @@ Section Tree.
 
   (** The trees we consider here *)
   Inductive binary_tree :=
-  | tree_leaf | tree_node (l : Σ) (t1 t2 : binary_tree).
+  | tree_leaf | tree_node (l : Σ * α) (t1 t2 : binary_tree).
 
   
   Section Domain.
@@ -408,6 +408,16 @@ Section Tree.
     Proof. split; auto using domain_Dom, Dom_domain. Qed.
   End Domain.
   
+  Section Size.
+
+    Fixpoint tree_size (t : binary_tree) : nat :=
+      match t with
+        | tree_leaf => 0
+        | tree_node λ l r => 1 + max (tree_size l) (tree_size r)
+      end.
+
+  End Size.
+
   Section Label.
 
     Inductive Label := 
@@ -435,7 +445,25 @@ Section Tree.
     Next Obligation. 
       depelim H. auto.
     Defined.
+
+    Lemma label_of_leaf π : label_of tree_leaf π = hash.
+    Proof. reflexivity. Qed.
+
+    Lemma label_of_node_ε λ l r p : 
+      label_of (tree_node λ l r) (exist _ ε p) = label λ.
+    Proof. reflexivity. Qed.
+
+    Program
+    Definition label_of_node_l_stm λ l r π p :=
+      label_of (tree_node λ l r) (exist _ (π • 1) p) = label_of l (exist _ π _).
+    Next Obligation.
+    Proof. 
+      depelim p. 
+    Admitted.
+      
   End Label.
+
+
 
 End Tree.
 
@@ -497,10 +525,13 @@ Section Evaluation.
    *)
 
   Open Scope node_scope. Open Scope direction_scope.
-(*
+
+  Definition set_size (r : set Q) := 0.
+
   Program
-  Fixpoint eval (t : binary_tree Σ) (π : node) (r : set Q) : set Q :=
-    match label_of t π with
+  Fixpoint eval (t : binary_tree Σ) (π : node | Dom t π) (r : set Q) { measure (tree_size t) } : set Q :=
+    let lab := label_of t π in
+    match lab with
       | hash => {}
       | label l =>
         let trans := 
@@ -511,5 +542,18 @@ Section Evaluation.
         let Γ2 := eval t (π @ [2]) r2 in
           eval_trans Γ1 Γ2 π trans
     end.
-*)
+
+  Next Obligation.
+    destruct t. depelim Heq_lab.
+    simpl in Heq_lab.
+
+  Next Obligation.
+   admit. 
+  Defined.
+
+
+  Next Obligation.
+   admit. 
+  Defined.
+
 End Evaluation.
